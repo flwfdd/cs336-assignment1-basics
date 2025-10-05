@@ -1,7 +1,9 @@
 from collections import Counter
 import os
+import pickle
 import regex as re
 from typing import BinaryIO
+import multiprocessing
 
 
 def find_chunk_boundaries(
@@ -57,7 +59,7 @@ def pre_tokenization(
     text: str,
     special_tokens: list[str],
     pattern: str = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
-) -> Counter:
+) -> Counter[str]:
     """
     A simple pre-tokenization function that removes special tokens and splits on pattern.
     Returns a dictionary mapping each pre-token (called "word") to its count in the text.
@@ -66,18 +68,17 @@ def pre_tokenization(
     special_tokens_pattern = "|".join(
         [re.escape(token) for token in sorted(special_tokens, key=len, reverse=True)]
     )
-    word_counts = Counter()
+    word_counts = Counter[str]()
     for segment in re.split(special_tokens_pattern, text):
         # Split text by pattern
         for match in re.finditer(pattern, segment):
             token = match.group(0)
             word_counts[token] += 1
-
     return word_counts
 
 
 def train_bpe(
-    input_path: str | os.PathLike,
+    input_path: str | os.PathLike[str],
     vocab_size: int,
     special_tokens: list[str],
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
@@ -106,28 +107,48 @@ def train_bpe(
         *[tok.encode("utf-8") for tok in special_tokens],
         *[bytes([i]) for i in range(256)],
     ]
-    word_counts: Counter[str, int] = Counter()
+    word_counts: Counter[str] = Counter()
 
     # Pre-tokenization
-    with open(input_path, "rb") as f:
-        num_processes = 1
-        boundaries = find_chunk_boundaries(
-            f, num_processes, special_tokens[0].encode("utf-8")
-        )
+    num_processes = 8
+    with multiprocessing.Manager() as manager:
+        results = manager.list()
+        processes: list[multiprocessing.Process] = []
+        with open(input_path, "rb") as f:
+            boundaries = find_chunk_boundaries(
+                f, num_processes, special_tokens[0].encode("utf-8")
+            )
 
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            f.seek(start)
-            chunk = f.read(end - start).decode("utf-8")
-            # Run pre-tokenization on your chunk and store the counts for each pre-token
-            word_counts += pre_tokenization(chunk, special_tokens)
+            for i, (start, end) in enumerate(zip(boundaries[:-1], boundaries[1:])):
+                f.seek(start)
+                chunk = f.read(end - start).decode("utf-8")
+
+                def worker(idx, res_list, txt, sp_tokens):
+                    try:
+                        res = pre_tokenization(txt, sp_tokens)
+                        res_list.append(res)
+                    except Exception as e:
+                        print(f"Error in process {idx}: {e}")
+
+                p = multiprocessing.Process(
+                    target=worker, args=(i, results, chunk, special_tokens)
+                )
+                processes.append(p)
+                p.start()
+        for p in processes:
+            p.join()
+        for res in results:
+            word_counts += res
 
     # Init BPE merges
     merges: list[tuple[bytes, bytes]] = []  # List of (byte pair) merges
-    words: dict[str, dict] = {}  # List of dicts, each with "tokens" and "count"
-    pair2word: dict[tuple[bytes, bytes], Counter[dict]] = (
+    words: dict[str, dict[str, str | list[bytes] | int]] = (
+        {}
+    )  # List of dicts, each with "tokens" and "count"
+    pair2word: dict[tuple[bytes, bytes], Counter[str]] = (
         {}
     )  # Reverse lookup from pair to word dicts
-    pair_counts: Counter[tuple[bytes, bytes], int] = Counter()
+    pair_counts: Counter[tuple[bytes, bytes]] = Counter()
     for word_str, count in word_counts.items():
         if (
             word_str.encode("utf-8") in vocab
@@ -149,14 +170,8 @@ def train_bpe(
 
     # BPE merges loop
     while len(vocab) < vocab_size:
-        if not pair_counts:
-            print(
-                f"Ran out of pairs to merge at vocab size {len(vocab)} < {vocab_size}"
-            )
-            break
-
         # Find the most common and exicographically greater byte pair
-        most_common_pair: tuple[bytes, bytes] = None
+        most_common_pair: tuple[bytes, bytes] | None = None
         most_common_pair_count = 0
         for pair, count in pair_counts.items():
             if (
@@ -168,6 +183,11 @@ def train_bpe(
                 most_common_pair_count = count
 
         # Merge the most common pair in all words that contain it
+        if most_common_pair is None:
+            print(
+                f"Ran out of pairs to merge at vocab size {len(vocab)} < {vocab_size}"
+            )
+            break
         left_token, right_token = most_common_pair
         new_token = left_token + right_token
         vocab.append(new_token)
@@ -177,8 +197,8 @@ def train_bpe(
         word_strs = list(pair2word.get(most_common_pair, {}).keys())
         for word_str in word_strs:
             word = words[word_str]
-            tokens = word["tokens"]
-            count = word["count"]
+            tokens: list[bytes] = word["tokens"]  # type: ignore
+            count: int = word["count"]  # type: ignore
             new_tokens = []
 
             # Remove all pairs
@@ -215,12 +235,23 @@ def train_bpe(
 
 if __name__ == "__main__":
     # vocab, merges = train_bpe("test.txt", 256 + 1 + 6, ["<|endoftext|>"])
-    vocab, merges = train_bpe(
-        "../tests/fixtures/tinystories_sample_5M.txt", 1000, ["<|endoftext|>"]
-    )
-    print("Vocab:")
-    for i, tok in vocab.items():
-        print(f"  {i}: {tok}")
-    print("\nMerges:")
-    for left, right in merges:
-        print(f"  {left} + {right} -> {left + right}")
+    # vocab, merges = train_bpe(
+    #     "../tests/fixtures/corpus.en", 256 + 1 + 6, ["<|endoftext|>"]
+    # )
+    vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-train.txt.txt", 10000, ["<|endoftext|>"])
+    with open("bpe_vocab.txt", "w", encoding="utf-8") as f:
+        for i, tok in vocab.items():
+            f.write(f"{i}\t{tok}\n")
+    with open("bpe_merges.txt", "w", encoding="utf-8") as f:
+        for left, right in merges:
+            f.write(f"{left} {right}\n")
+    with open("bpe_vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+    with open("bpe_merges.pkl", "wb") as f:
+        pickle.dump(merges, f)
+    # print("Vocab:")
+    # for i, tok in vocab.items():
+    #     print(f"  {i}: {tok}")
+    # print("\nMerges:")
+    # for left, right in merges:
+    #     print(f"  {left} + {right} -> {left + right}")
