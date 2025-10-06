@@ -72,8 +72,8 @@ def pre_tokenization(
     for segment in re.split(special_tokens_pattern, text):
         # Split text by pattern
         for match in re.finditer(pattern, segment):
-            token = match.group(0)
-            word_counts[token] += 1
+            word = match.group(0)
+            word_counts[word] += 1
     return word_counts
 
 
@@ -238,7 +238,9 @@ if __name__ == "__main__":
     # vocab, merges = train_bpe(
     #     "../tests/fixtures/corpus.en", 256 + 1 + 6, ["<|endoftext|>"]
     # )
-    vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-train.txt.txt", 10000, ["<|endoftext|>"])
+    vocab, merges = train_bpe(
+        "../data/TinyStoriesV2-GPT4-train.txt.txt", 10000, ["<|endoftext|>"]
+    )
     with open("bpe_vocab.txt", "w", encoding="utf-8") as f:
         for i, tok in vocab.items():
             f.write(f"{i}\t{tok}\n")
