@@ -62,3 +62,35 @@ class Embedding(nn.Module):
         Lookup the embedding vectors for the given token IDs.
         """
         return self.embedding[token_ids]
+
+
+class RMSNorm(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        eps: float = 1e-5,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        """
+        Construct the RMSNorm module.
+        """
+        super().__init__()
+        self.eps = eps
+        self.gain: Float[torch.Tensor, "d_model"] = nn.Parameter(
+            torch.ones(d_model, device=device, dtype=dtype)
+        )
+
+    def forward(
+        self, x: Float[torch.Tensor, "... d_model"]
+    ) -> Float[torch.Tensor, "... d_model"]:
+        """
+        Process an input tensor of shape (batch_size, sequence_length, d_model) and return a tensor of the same shape.
+        """
+        in_dtype = x.dtype
+        x = x.to(torch.float32)
+
+        rms = torch.sqrt(torch.mean(torch.pow(x, 2), dim=-1, keepdim=True) + self.eps)
+        result = x / rms * self.gain
+
+        return result.to(in_dtype)
