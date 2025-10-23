@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from collections.abc import Iterable
 from typing import IO, Any, BinaryIO
 
@@ -31,8 +31,12 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
+    from cs336_basics.module import Linear
 
-    raise NotImplementedError
+    linear = Linear(d_in, d_out)
+    with torch.no_grad():
+        linear.W.data.copy_(weights.T)
+    return linear(in_features)
 
 
 def run_embedding(
