@@ -94,3 +94,31 @@ class RMSNorm(nn.Module):
         result = x / rms * self.gain
 
         return result.to(in_dtype)
+
+
+class SiLU(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x: Float[torch.Tensor, "..."]) -> Float[torch.Tensor, "..."]:
+        return x * torch.sigmoid(x)
+
+
+class SwiGLU(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.silu = SiLU()
+        self.d_ff = math.floor(8 / 3 * d_model / 64) * 64
+        self.W1 = Linear(d_model, self.d_ff, device=device, dtype=dtype)
+        self.W2 = Linear(self.d_ff, d_model, device=device, dtype=dtype)
+        self.W3 = Linear(d_model, self.d_ff, device=device, dtype=dtype)
+
+    def forward(
+        self, x: Float[torch.Tensor, "... d_model"]
+    ) -> Float[torch.Tensor, "... d_model"]:
+        return self.W2.forward(self.silu(self.W1.forward(x)) * self.W3.forward(x))
