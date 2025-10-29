@@ -122,3 +122,46 @@ class SwiGLU(nn.Module):
         self, x: Float[torch.Tensor, "... d_model"]
     ) -> Float[torch.Tensor, "... d_model"]:
         return self.W2.forward(self.silu(self.W1.forward(x)) * self.W3.forward(x))
+
+
+class RoPE(nn.Module):
+    cos: Float[torch.Tensor, "max_seq_len d_k_half"]
+    sin: Float[torch.Tensor, "max_seq_len d_k_half"]
+
+    def __init__(
+        self,
+        theta: float,
+        d_k: int,
+        max_seq_len: int,
+        device: torch.device | None = None,
+    ) -> None:
+        """
+        Construct the RoPE module and create buffers if needed.
+        theta: float Θ value for the RoPE
+        d_k: int dimension of query and key vectors
+        max_seq_len: int Maximum sequence length that will be inputted
+        """
+        super().__init__()
+        thetas = einsum(
+            torch.arange(max_seq_len),
+            torch.pow(theta, -torch.arange(0, d_k, 2) / d_k),
+            "index, theta -> index theta",
+        )
+        cos = torch.cos(thetas).to(device)  # max_seq_len d_k/2
+        sin = torch.sin(thetas).to(device)
+        self.register_buffer("cos", cos, persistent=False)
+        self.register_buffer("sin", sin, persistent=False)
+
+    def forward(
+        self,
+        x: Float[torch.Tensor, "... seq_len d_k"],
+        token_positions: Float[torch.Tensor, "... seq_len"],
+    ) -> Float[torch.Tensor, "... seq_len d_k"]:
+        x_even = x[..., ::2]  # ... seq_len d_k/2
+        x_odd = x[..., 1::2]
+        cos = self.cos[token_positions]  # ... seq_len d_k/2
+        sin = self.sin[token_positions]
+        result = torch.empty_like(x)  # ... seq_len d_k
+        result[..., ::2] = x_even * cos - x_odd * sin
+        result[..., 1::2] = x_even * sin + x_odd * cos
+        return result
