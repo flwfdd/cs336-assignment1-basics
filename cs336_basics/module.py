@@ -2,7 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
-from einops import einsum
+from einops import einsum, rearrange
 from jaxtyping import Float, Int
 
 
@@ -184,3 +184,62 @@ def scaled_dot_product_attention(
         V,
         "... queries keys, ... keys d_v -> ... queries d_v",
     )
+
+
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        pos_encoder: nn.Module | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.pos_encoder = pos_encoder
+        self.W_q = Linear(
+            d_model, d_model, device=device, dtype=dtype
+        )  # d_model -> h*d_q
+        self.W_k = Linear(
+            d_model, d_model, device=device, dtype=dtype
+        )  # d_model -> h*d_k
+        self.W_v = Linear(
+            d_model, d_model, device=device, dtype=dtype
+        )  # d_model -> h*d_v
+        self.W_o = Linear(
+            d_model, d_model, device=device, dtype=dtype
+        )  # h*d_v -> d_model
+
+    def forward(
+        self,
+        x: Float[torch.Tensor, "batch_size ... seq_len d_model"],
+        token_positions: Int[torch.Tensor, " ... seq_len"] | None = None,
+    ) -> Float[torch.Tensor, "batch_size ... seq_len d_model"]:
+        seq_len = x.shape[-2]
+        Q: Float[torch.Tensor, "batch_size ... seq_len h*d_q"] = self.W_q(x)
+        K: Float[torch.Tensor, "batch_size ... seq_len h*d_k"] = self.W_k(x)
+        V: Float[torch.Tensor, "batch_size ... seq_len h*d_v"] = self.W_v(x)
+        # split heads
+        Qh: Float[torch.Tensor, "batch_size ... h seq_len d_q"] = rearrange(
+            Q, "... seq_len (h d) -> ... h seq_len d", h=self.num_heads
+        )
+        Kh: Float[torch.Tensor, "batch_size ... h seq_len d_k"] = rearrange(
+            K, "... seq_len (h d) -> ... h seq_len d", h=self.num_heads
+        )
+        Vh: Float[torch.Tensor, "batch_size ... h seq_len d_v"] = rearrange(
+            V, "... seq_len (h d) -> ... h seq_len d", h=self.num_heads
+        )
+        # apply positional encoding if any
+        if self.pos_encoder is not None and token_positions is not None:
+            Qh = self.pos_encoder(Qh, token_positions)
+            Kh = self.pos_encoder(Kh, token_positions)
+        # create mask for causal attention
+        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1) == 0
+        # apply attention and merge heads
+        out: Float[torch.Tensor, "batch_size ... seq_len h*d_v"] = rearrange(
+            scaled_dot_product_attention(Qh, Kh, Vh, mask),
+            "... h seq_len d -> ... seq_len (h d)",
+        )
+        return self.W_o(out)
