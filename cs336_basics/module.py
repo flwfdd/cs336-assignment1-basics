@@ -253,12 +253,12 @@ class TransformerBlock(nn.Module):
         num_heads: int,
         d_ff: int,
         max_seq_len: int,
-        theta: float,
+        rope_theta: float,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        self.rope = RoPE(theta, d_model // num_heads, max_seq_len, device)
+        self.rope = RoPE(rope_theta, d_model // num_heads, max_seq_len, device)
         self.swiglu = SwiGLU(d_model, d_ff, device, dtype)
         self.mha = MultiHeadSelfAttention(
             d_model, num_heads, pos_encoder=self.rope, device=device, dtype=dtype
@@ -285,4 +285,42 @@ class TransformerBlock(nn.Module):
         x = self.swiglu(x)
         x = x + x_residual
 
+        return x
+
+
+class TransformerLM(
+    nn.Module,
+):
+    def __init__(
+        self,
+        vocab_size: int,
+        context_length: int,
+        d_model: int,
+        num_layers: int,
+        num_heads: int,
+        d_ff: int,
+        rope_theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.layers: list[TransformerBlock] = [
+            TransformerBlock(
+                d_model, num_heads, d_ff, context_length, rope_theta, device, dtype
+            )
+            for _ in range(num_layers)
+        ]
+        self.token_embedding = Embedding(vocab_size, d_model, device, dtype)
+        self.norm_final = RMSNorm(d_model, device=device, dtype=dtype)
+        self.output_embedding = Linear(d_model, vocab_size, device, dtype)
+
+    def forward(
+        self,
+        token_ids: Int[torch.Tensor, " batch_size sequence_length"],
+    ) -> Float[torch.Tensor, " batch_size sequence_length vocab_size"]:
+        x = self.token_embedding(token_ids)
+        for block in self.layers:
+            x = block(x)
+        x = self.norm_final(x)
+        x = self.output_embedding(x)
         return x

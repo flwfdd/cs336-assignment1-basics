@@ -409,7 +409,38 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    from cs336_basics.module import TransformerLM
+
+    transformer_lm = TransformerLM(
+        vocab_size,
+        context_length,
+        d_model,
+        num_layers,
+        num_heads,
+        d_ff,
+        rope_theta,
+    )
+    with torch.no_grad():
+        transformer_lm.token_embedding.embedding.data.copy_(
+            weights["token_embeddings.weight"]
+        )
+        for layer_idx in range(num_layers):
+            layer_prefix = f"layers.{layer_idx}."
+            layer = transformer_lm.layers[layer_idx]
+            layer.mha.W_q.W.data.copy_(weights[f"{layer_prefix}attn.q_proj.weight"].T)
+            layer.mha.W_k.W.data.copy_(weights[f"{layer_prefix}attn.k_proj.weight"].T)
+            layer.mha.W_v.W.data.copy_(weights[f"{layer_prefix}attn.v_proj.weight"].T)
+            layer.mha.W_o.W.data.copy_(
+                weights[f"{layer_prefix}attn.output_proj.weight"].T
+            )
+            layer.norm1.gain.data.copy_(weights[f"{layer_prefix}ln1.weight"])
+            layer.swiglu.W1.W.data.copy_(weights[f"{layer_prefix}ffn.w1.weight"].T)
+            layer.swiglu.W2.W.data.copy_(weights[f"{layer_prefix}ffn.w2.weight"].T)
+            layer.swiglu.W3.W.data.copy_(weights[f"{layer_prefix}ffn.w3.weight"].T)
+            layer.norm2.gain.data.copy_(weights[f"{layer_prefix}ln2.weight"])
+        transformer_lm.norm_final.gain.data.copy_(weights["ln_final.weight"])
+        transformer_lm.output_embedding.W.data.copy_(weights["lm_head.weight"].T)
+    return transformer_lm(in_indices)
 
 
 def run_rmsnorm(
