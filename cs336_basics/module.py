@@ -96,12 +96,10 @@ class RMSNorm(nn.Module):
         return result.to(in_dtype)
 
 
-class SiLU(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(self, x: Float[torch.Tensor, "..."]) -> Float[torch.Tensor, "..."]:
-        return x * torch.sigmoid(x)
+def silu(
+    x: Float[torch.Tensor, "..."],
+) -> Float[torch.Tensor, "..."]:
+    return x * torch.sigmoid(x)
 
 
 class SwiGLU(nn.Module):
@@ -112,7 +110,6 @@ class SwiGLU(nn.Module):
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        self.silu = SiLU()
         self.d_ff = math.floor(8 / 3 * d_model / 64) * 64
         self.W1 = Linear(d_model, self.d_ff, device=device, dtype=dtype)
         self.W2 = Linear(self.d_ff, d_model, device=device, dtype=dtype)
@@ -121,7 +118,7 @@ class SwiGLU(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "... d_model"]
     ) -> Float[torch.Tensor, "... d_model"]:
-        return self.W2.forward(self.silu(self.W1.forward(x)) * self.W3.forward(x))
+        return self.W2.forward(silu(self.W1.forward(x)) * self.W3.forward(x))
 
 
 class RoPE(nn.Module):
@@ -165,3 +162,25 @@ class RoPE(nn.Module):
         result[..., ::2] = x_even * cos - x_odd * sin
         result[..., 1::2] = x_even * sin + x_odd * cos
         return result
+
+
+def softmax(x: Float[torch.Tensor, " ..."], dim: int):
+    x -= x.max(dim, keepdim=True).values  # make max to 0
+    exp = x.exp()
+    return exp / exp.sum(dim, keepdim=True)
+
+
+def scaled_dot_product_attention(
+    Q: Float[torch.Tensor, "batch_size ... queries d_k"],
+    K: Float[torch.Tensor, "batch_size ... keys d_k"],
+    V: Float[torch.Tensor, "batch_size ... values d_v"],
+    mask: Float[torch.Tensor, "queries keys"] | None = None,
+) -> Float[torch.Tensor, "batch_size ... queries d_v"]:
+    scores = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
+    if mask is not None:
+        scores = scores.masked_fill(mask == False, float("-inf"))
+    return einsum(
+        softmax(scores / math.sqrt(K.shape[-1]), -1),
+        V,
+        "... queries keys, ... keys d_v -> ... queries d_v",
+    )
