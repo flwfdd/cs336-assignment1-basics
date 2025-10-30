@@ -96,7 +96,8 @@ def run_swiglu(
     # swiglu.w3.weight.data = w3_weight
     from cs336_basics.module import SwiGLU
 
-    swiglu = SwiGLU(d_model)
+    d_ff = int(8 / 3 * d_model // 64) * 64
+    swiglu = SwiGLU(d_model, d_ff)
     with torch.no_grad():
         swiglu.W1.W.data.copy_(w1_weight.T)
         swiglu.W2.W.data.copy_(w2_weight.T)
@@ -313,7 +314,20 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    from cs336_basics.module import TransformerBlock
+
+    transformer_block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
+    with torch.no_grad():
+        transformer_block.mha.W_q.W.data.copy_(weights["attn.q_proj.weight"].T)
+        transformer_block.mha.W_k.W.data.copy_(weights["attn.k_proj.weight"].T)
+        transformer_block.mha.W_v.W.data.copy_(weights["attn.v_proj.weight"].T)
+        transformer_block.mha.W_o.W.data.copy_(weights["attn.output_proj.weight"].T)
+        transformer_block.norm1.gain.data.copy_(weights["ln1.weight"])
+        transformer_block.swiglu.W1.W.data.copy_(weights["ffn.w1.weight"].T)
+        transformer_block.swiglu.W2.W.data.copy_(weights["ffn.w2.weight"].T)
+        transformer_block.swiglu.W3.W.data.copy_(weights["ffn.w3.weight"].T)
+        transformer_block.norm2.gain.data.copy_(weights["ln2.weight"])
+    return transformer_block(in_features)
 
 
 def run_transformer_lm(

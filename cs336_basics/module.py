@@ -106,11 +106,12 @@ class SwiGLU(nn.Module):
     def __init__(
         self,
         d_model: int,
+        d_ff: int,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        self.d_ff = math.floor(8 / 3 * d_model / 64) * 64
+        self.d_ff = d_ff
         self.W1 = Linear(d_model, self.d_ff, device=device, dtype=dtype)
         self.W2 = Linear(self.d_ff, d_model, device=device, dtype=dtype)
         self.W3 = Linear(d_model, self.d_ff, device=device, dtype=dtype)
@@ -243,3 +244,45 @@ class MultiHeadSelfAttention(nn.Module):
             "... h seq_len d -> ... seq_len (h d)",
         )
         return self.W_o(out)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        max_seq_len: int,
+        theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.rope = RoPE(theta, d_model // num_heads, max_seq_len, device)
+        self.swiglu = SwiGLU(d_model, d_ff, device, dtype)
+        self.mha = MultiHeadSelfAttention(
+            d_model, num_heads, pos_encoder=self.rope, device=device, dtype=dtype
+        )
+        self.norm1 = RMSNorm(d_model, device=device, dtype=dtype)
+        self.norm2 = RMSNorm(d_model, device=device, dtype=dtype)
+        self.token_positions: Int[torch.Tensor, "max_seq_len"] = torch.arange(
+            max_seq_len, device=device
+        )
+
+    def forward(
+        self,
+        x: Float[torch.Tensor, "batch_size seq_len d_model"],
+    ) -> Float[torch.Tensor, "batch_size seq_len d_model"]:
+        # Multi-Head Attention with RoPE
+        x_residual = x
+        x = self.norm1(x)
+        x = self.mha(x, self.token_positions[: x.shape[-2]])
+        x = x + x_residual
+
+        # Feed-Forward Network with SwiGLU
+        x_residual = x
+        x = self.norm2(x)
+        x = self.swiglu(x)
+        x = x + x_residual
+
+        return x
