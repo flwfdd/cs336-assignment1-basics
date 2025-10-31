@@ -316,11 +316,20 @@ class TransformerLM(
 
     def forward(
         self,
-        token_ids: Int[torch.Tensor, " batch_size sequence_length"],
-    ) -> Float[torch.Tensor, " batch_size sequence_length vocab_size"]:
+        token_ids: Int[torch.Tensor, "batch_size sequence_length"],
+    ) -> Float[torch.Tensor, "batch_size sequence_length vocab_size"]:
         x = self.token_embedding(token_ids)
         for block in self.layers:
             x = block(x)
         x = self.norm_final(x)
         x = self.output_embedding(x)
         return x
+
+
+def cross_entropy(
+    pred_logits: Float[torch.Tensor, "batch_size vocab_size"],
+    targets: Int[torch.Tensor, "batch_size"],
+) -> Float[torch.Tensor, ""]:
+    x = pred_logits - pred_logits.max(dim=-1, keepdim=True).values
+    x = x.exp().sum(dim=-1).log() - x[torch.arange(x.shape[0]), targets]
+    return torch.mean(x)
