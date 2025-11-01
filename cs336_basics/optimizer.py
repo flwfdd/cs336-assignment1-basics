@@ -54,3 +54,15 @@ class AdamW(torch.optim.Optimizer):
                 state["m"] = m
                 state["v"] = v
         return loss
+
+
+def get_lr_cosine_schedule(
+    t: int, lr_max: float, lr_min: float, T_w: int, T_c: int
+) -> float:
+    if t < T_w:
+        return t / T_w * lr_max
+    if t <= T_c:
+        return lr_min + 0.5 * (1 + math.cos((t - T_w) / (T_c - T_w) * math.pi)) * (
+            lr_max - lr_min
+        )
+    return lr_min
