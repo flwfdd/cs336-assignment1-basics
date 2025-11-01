@@ -1,4 +1,5 @@
 import math
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -324,12 +325,3 @@ class TransformerLM(
         x = self.norm_final(x)
         x = self.output_embedding(x)
         return x
-
-
-def cross_entropy(
-    pred_logits: Float[torch.Tensor, "batch_size vocab_size"],
-    targets: Int[torch.Tensor, "batch_size"],
-) -> Float[torch.Tensor, ""]:
-    x = pred_logits - pred_logits.max(dim=-1, keepdim=True).values
-    x = x.exp().sum(dim=-1).log() - x[torch.arange(x.shape[0]), targets]
-    return torch.mean(x)
