@@ -71,7 +71,6 @@ class TrainConfig(typing.TypedDict):
     betas: tuple[float, float]
     eps: float
     max_grad_norm: float
-    lr_schedule: str
     # data
     token_ids_path: str | os.PathLike
     checkpoint_dir: str | os.PathLike
@@ -102,7 +101,6 @@ TinyStoriesConfig = TrainConfig(
     betas=(0.9, 0.95),
     eps=1e-6,
     max_grad_norm=1.0,
-    lr_schedule="cosine",
     # data
     token_ids_path="../data/TinyStoriesV2-GPT4-train/token_ids.npy",
     checkpoint_dir="../data/checkpoints/tiny_stories",
@@ -177,6 +175,14 @@ def train(config: TrainConfig) -> None:
             )
             save_checkpoint(lm, adamw, step + 1, checkpoint_path)
             print(f"Saved checkpoint to {checkpoint_path}")
+    os.makedirs(config["checkpoint_dir"], exist_ok=True)
+    checkpoint_path = os.path.join(config["checkpoint_dir"], f"checkpoint_final.pt")
+    save_checkpoint(
+        lm,
+        adamw,
+        total_steps,
+        checkpoint_path,
+    )
 
 
 if __name__ == "__main__":
