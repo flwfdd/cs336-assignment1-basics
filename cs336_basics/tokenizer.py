@@ -139,6 +139,29 @@ class Tokenizer:
         return b"".join(bytes_list).decode("utf-8", errors="replace")
 
 
+def _encode_with_text(t: str):
+    return (t, tokenizer.encode(t))
+
+
+def _accumulate_iter(iterable: Iterable[str], min_size: int) -> Iterator[str]:
+    """
+    Accumulate strings from an iterable until reaching at least min_size,
+    """
+    batch = ""
+    for text in iterable:
+        batch += text
+        if len(batch) >= min_size:
+            yield batch
+            batch = ""
+    if batch:
+        yield batch
+
+
+def _init_worker(tok: Tokenizer):
+    global tokenizer
+    tokenizer = tok
+
+
 if __name__ == "__main__":
     import array
     import multiprocessing
@@ -146,22 +169,6 @@ if __name__ == "__main__":
 
     import numpy as np
     import tqdm
-
-    def encode_with_text(t):
-        return (t, tokenizer.encode(t))
-
-    def accumulate_iter(iterable, min_size):
-        """
-        Accumulate strings from an iterable until reaching at least min_size,
-        """
-        batch = ""
-        for text in iterable:
-            batch += text
-            if len(batch) >= min_size:
-                yield batch
-                batch = ""
-        if batch:
-            yield batch
 
     tokenizer = Tokenizer.from_files(
         "../data/owt_train/bpe_vocab.pkl",
@@ -171,7 +178,7 @@ if __name__ == "__main__":
 
     token_ids_buf = array.array("H")
 
-    file_path = "../data/owt_valid.txt"
+    file_path = "../data/owt_train.txt"
     with open(file_path, "r") as f:
         f.seek(0, os.SEEK_END)
         bytes_len = f.tell()
@@ -183,9 +190,11 @@ if __name__ == "__main__":
             desc="Encoding",
             bar_format="{desc}: {percentage:3.0f}%|{bar}| {n:,}/{total:,} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
         ) as pbar:
-            with multiprocessing.Pool(processes=8) as pool:
+            with multiprocessing.Pool(
+                processes=8, initializer=_init_worker, initargs=(tokenizer,)
+            ) as pool:
                 batch_ids = pool.imap(
-                    encode_with_text, accumulate_iter(f, 128 * 1024)
+                    _encode_with_text, _accumulate_iter(f, 128 * 1024)
                 )  # parallel processing
                 for text, ids in batch_ids:
                     token_ids_buf.extend(ids)

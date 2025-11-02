@@ -167,3 +167,6 @@ data
 
 # MacOS
 .DS_Store
+
+# wandb
+wandb/

@@ -198,6 +198,8 @@ class MultiHeadSelfAttention(nn.Module):
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
+        self.device = device
+        self.dtype = dtype
         self.d_model = d_model
         self.num_heads = num_heads
         self.pos_encoder = pos_encoder
@@ -238,7 +240,13 @@ class MultiHeadSelfAttention(nn.Module):
             Qh = self.pos_encoder(Qh, token_positions)
             Kh = self.pos_encoder(Kh, token_positions)
         # create mask for causal attention
-        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1) == 0
+        mask = (
+            torch.triu(
+                torch.ones(seq_len, seq_len, device=self.device, dtype=torch.bool),
+                diagonal=1,
+            )
+            == 0
+        )
         # apply attention and merge heads
         out: Float[torch.Tensor, "batch_size ... seq_len h*d_v"] = rearrange(
             scaled_dot_product_attention(Qh, Kh, Vh, mask),
