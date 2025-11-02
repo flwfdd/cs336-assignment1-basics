@@ -30,16 +30,11 @@ def decode(
                 sorted_probs, sorted_indices = probs.sort(descending=True)
                 cumulative_probs = sorted_probs.cumsum(dim=-1)
                 cutoff = cumulative_probs > top_p
+                cutoff[:, 0] = False  # Ensure at least one token is kept
                 sorted_probs[cutoff] = 0
                 sorted_probs /= sorted_probs.sum(dim=-1, keepdim=True)
                 next_token = sorted_indices.gather(
                     -1, torch.multinomial(sorted_probs, 1)
-                )
-                print(
-                    "Generating with top-p sampling",
-                    sorted_indices,
-                    torch.multinomial(sorted_probs, 1),
-                    next_token,
                 )
             else:
                 next_token = torch.multinomial(probs, 1)
@@ -92,7 +87,7 @@ if __name__ == "__main__":
         stop_token,
         context_length=200,
         temperature=1.0,
-        top_p=1,
+        top_p=0.9,
         device=config["device"],
     )
     print(generated_text)

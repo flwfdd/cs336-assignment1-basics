@@ -84,7 +84,7 @@ class TrainConfig(typing.TypedDict):
 
 
 TinyStoriesConfig = TrainConfig(
-    device=torch.device("mps"),
+    device=torch.device("cuda"),
     dtype=torch.float32,
     # Transformer LM
     vocab_size=10000,
@@ -95,22 +95,22 @@ TinyStoriesConfig = TrainConfig(
     d_ff=1344,
     rope_theta=10000,
     # optimizer
-    lr=1e-3,
-    lr_min=1e-5,
-    weight_decay=0.1,
-    betas=(0.9, 0.95),
-    eps=1e-6,
+    lr=3e-4,
+    lr_min=3e-5,
+    weight_decay=0.01,
+    betas=(0.9, 0.999),
+    eps=1e-8,
     max_grad_norm=1.0,
     # data
     token_ids_path="../data/TinyStoriesV2-GPT4-train/token_ids.npy",
     checkpoint_dir="../data/checkpoints/tiny_stories",
     # train
-    batch_size=32,
-    total_tokens=40_000_000,
+    batch_size=128,
+    total_tokens=327_680_000,
     validation_interval=10,
     checkpoint_interval=1000,
     wandb_project="cs336",
-    wandb_name="tiny_stories_experiment",
+    wandb_name="tiny_stories_h100",
 )
 
 

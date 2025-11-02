@@ -313,12 +313,14 @@ class TransformerLM(
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        self.layers: list[TransformerBlock] = [
-            TransformerBlock(
-                d_model, num_heads, d_ff, context_length, rope_theta, device, dtype
-            )
-            for _ in range(num_layers)
-        ]
+        self.layers = nn.ModuleList(
+            [
+                TransformerBlock(
+                    d_model, num_heads, d_ff, context_length, rope_theta, device, dtype
+                )
+                for _ in range(num_layers)
+            ]
+        )
         self.token_embedding = Embedding(vocab_size, d_model, device, dtype)
         self.norm_final = RMSNorm(d_model, device=device, dtype=dtype)
         self.output_embedding = Linear(d_model, vocab_size, device, dtype)
