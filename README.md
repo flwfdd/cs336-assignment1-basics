@@ -1,54 +1,3 @@
-# CS336 Spring 2025 Assignment 1: Basics
-
-For a full description of the assignment, see the assignment handout at
-[cs336_spring2025_assignment1_basics.pdf](./cs336_spring2025_assignment1_basics.pdf)
-
-If you see any issues with the assignment handout or code, please feel free to
-raise a GitHub issue or open a pull request with a fix.
-
-## Setup
-
-### Environment
-We manage our environments with `uv` to ensure reproducibility, portability, and ease of use.
-Install `uv` [here](https://github.com/astral-sh/uv) (recommended), or run `pip install uv`/`brew install uv`.
-We recommend reading a bit about managing projects in `uv` [here](https://docs.astral.sh/uv/guides/projects/#managing-dependencies) (you will not regret it!).
-
-You can now run any code in the repo using
-```sh
-uv run <python_file_path>
-```
-and the environment will be automatically solved and activated when necessary.
-
-### Run unit tests
-
-
-```sh
-uv run pytest
-```
-
-Initially, all tests should fail with `NotImplementedError`s.
-To connect your implementation to the tests, complete the
-functions in [./tests/adapters.py](./tests/adapters.py).
-
-### Download data
-Download the TinyStories data and a subsample of OpenWebText
-
-``` sh
-mkdir -p data
-cd data
-
-wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
-wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
-
-wget https://huggingface.co/datasets/stanford-cs336/owt-sample/resolve/main/owt_train.txt.gz
-gunzip owt_train.txt.gz
-wget https://huggingface.co/datasets/stanford-cs336/owt-sample/resolve/main/owt_valid.txt.gz
-gunzip owt_valid.txt.gz
-
-cd ..
-```
-
-
 # Write Up
 
 一份问答题参考：[mattreed.com/projects/lm-from-scratch/architecture.pdf](https://www.mattreed.com/projects/lm-from-scratch/architecture.pdf)
@@ -134,3 +83,53 @@ merges = [
 训练观测部分推荐使用 [Weights & Biases](https://wandb.ai/)，写完先用 MacBook Air M2 跑了一下，用了大概两个半小时，看样子只需要 5GB 左右内存。然后整了台 H100 跑，但不管怎么调参 loss 最低也就能到 2.2 左右，远远达不到要求的 1.45，最后 AUV 您猜怎么着？拿去让 Gemini 检查了下发现是 `TransformerLM` 中的 `layers` 放在了一个普通的列表中，torch 是拿不到的，所以实际上主要的 Transformer 参数完全就没有被训练到，这居然都还能到 2.2 也是挺神奇的。改了这个之后就轻松跑到 1.5 以下了，生成了下虽然逻辑有点唐但也像模像样的。
 
 生出来了！人生第一个小模型！
+
+# CS336 Spring 2025 Assignment 1: Basics
+
+For a full description of the assignment, see the assignment handout at
+[cs336_spring2025_assignment1_basics.pdf](./cs336_spring2025_assignment1_basics.pdf)
+
+If you see any issues with the assignment handout or code, please feel free to
+raise a GitHub issue or open a pull request with a fix.
+
+## Setup
+
+### Environment
+We manage our environments with `uv` to ensure reproducibility, portability, and ease of use.
+Install `uv` [here](https://github.com/astral-sh/uv) (recommended), or run `pip install uv`/`brew install uv`.
+We recommend reading a bit about managing projects in `uv` [here](https://docs.astral.sh/uv/guides/projects/#managing-dependencies) (you will not regret it!).
+
+You can now run any code in the repo using
+```sh
+uv run <python_file_path>
+```
+and the environment will be automatically solved and activated when necessary.
+
+### Run unit tests
+
+
+```sh
+uv run pytest
+```
+
+Initially, all tests should fail with `NotImplementedError`s.
+To connect your implementation to the tests, complete the
+functions in [./tests/adapters.py](./tests/adapters.py).
+
+### Download data
+Download the TinyStories data and a subsample of OpenWebText
+
+``` sh
+mkdir -p data
+cd data
+
+wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-train.txt
+wget https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-valid.txt
+
+wget https://huggingface.co/datasets/stanford-cs336/owt-sample/resolve/main/owt_train.txt.gz
+gunzip owt_train.txt.gz
+wget https://huggingface.co/datasets/stanford-cs336/owt-sample/resolve/main/owt_valid.txt.gz
+gunzip owt_valid.txt.gz
+
+cd ..
+```
